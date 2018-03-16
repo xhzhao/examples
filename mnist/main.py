@@ -6,6 +6,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
+import torch.distributed as dist
+from distributed import DistributedDataParallel
+import torch.utils.data                                                         
+import torch.utils.data.distributed 
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -25,22 +29,39 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
+parser.add_argument('--world-size', default=1, type=int,                        
+                    help='number of distributed processes')                     
+parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str, 
+                    help='url used to set up distributed training')             
+parser.add_argument('--dist-backend', default='mpi', type=str,                 
+                    help='distributed backend')       
+
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
+args.distributed = args.world_size > 1
 
 torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
+if args.distributed:                                                        
+    print("args.world_size = ", args.world_size)
+    dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+                            world_size=args.world_size)
 
+train_dataset = datasets.MNIST('../data', train=True, download=True,                        
+                   transform=transforms.Compose([                               
+                       transforms.ToTensor(),                                   
+                       transforms.Normalize((0.1307,), (0.3081,))               
+                   ]))
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
-train_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=True, download=True,
-                   transform=transforms.Compose([
-                       transforms.ToTensor(),
-                       transforms.Normalize((0.1307,), (0.3081,))
-                   ])),
-    batch_size=args.batch_size, shuffle=True, **kwargs)
+if args.distributed:                                                        
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+else:                                                                       
+    train_sampler = None
+train_loader = torch.utils.data.DataLoader( train_dataset,
+    batch_size=args.batch_size, shuffle=(train_sampler is None), sampler=train_sampler, **kwargs)
 test_loader = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=False, transform=transforms.Compose([
                        transforms.ToTensor(),
@@ -70,6 +91,8 @@ class Net(nn.Module):
 model = Net()
 if args.cuda:
     model.cuda()
+if args.distributed:
+    model=DistributedDataParallel(model)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
