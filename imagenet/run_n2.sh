@@ -5,11 +5,14 @@ export I_MPI_FABRICS=tmi
                                                                                 
 export KMP_AFFINITY=compact,1,0,granularity=fine                                
 export OMP_NUM_THREADS=56
+
+lscpu
 which python
 
+data_path=/home/zhaoxiao/test/pytorch-imagenet-dataset/tiny-imagenet/tiny-imagenet-200/
 
 #n1
-#python main.py
+#python main.py -a resnet18 -p 1 $data_path
 
 #n2
-mpirun -n 2  python -u main.py --batch-size 32 --world-size 2
+mpirun -n 2 -ppn 1 -f host.txt python main.py -a resnet18 --batch-size 128 --world-size 2 --dist-backend mpi -p 1  $data_path

@@ -14,6 +14,7 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
+from distributed import DistributedDataParallel
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -55,14 +56,15 @@ parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='gloo', type=str,
                     help='distributed backend')
-
+parser.add_argument('--no-cuda', action='store_true', default=False,            
+                    help='disables CUDA training')
 best_prec1 = 0
 
 
 def main():
     global args, best_prec1
     args = parser.parse_args()
-
+    args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.distributed = args.world_size > 1
 
     if args.distributed:
@@ -77,18 +79,16 @@ def main():
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
 
-    if not args.distributed:
+    if not args.distributed and args.cuda:
         if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
             model.features = torch.nn.DataParallel(model.features)
-            model.cuda()
         else:
-            model = torch.nn.DataParallel(model).cuda()
-    else:
-        model.cuda()
-        model = torch.nn.parallel.DistributedDataParallel(model)
+            model = torch.nn.DataParallel(model)
+    elif args.distributed:
+        model = DistributedDataParallel(model)
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda()
+    criterion = nn.CrossEntropyLoss()
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
@@ -132,7 +132,7 @@ def main():
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+        num_workers=args.workers, sampler=train_sampler)
 
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
@@ -142,7 +142,7 @@ def main():
             normalize,
         ])),
         batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+        num_workers=args.workers)
 
     if args.evaluate:
         validate(val_loader, model, criterion)
@@ -162,6 +162,7 @@ def main():
         # remember best prec@1 and save checkpoint
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
+        """
         save_checkpoint({
             'epoch': epoch + 1,
             'arch': args.arch,
@@ -169,6 +170,7 @@ def main():
             'best_prec1': best_prec1,
             'optimizer' : optimizer.state_dict(),
         }, is_best)
+        """
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -186,7 +188,6 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        target = target.cuda(async=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -231,7 +232,6 @@ def validate(val_loader, model, criterion):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
-        target = target.cuda(async=True)
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
