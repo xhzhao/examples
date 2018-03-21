@@ -92,7 +92,8 @@ model = Net()
 if args.cuda:
     model.cuda()
 if args.distributed:
-    model=DistributedDataParallel(model)
+    #model=DistributedDataParallel(model)
+    model=torch.nn.parallel.DistributedDataParallel(model)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
