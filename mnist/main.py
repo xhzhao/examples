@@ -7,9 +7,9 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import torch.distributed as dist
-from distributed import DistributedDataParallel
 import torch.utils.data                                                         
 import torch.utils.data.distributed 
+import time
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -92,8 +92,7 @@ model = Net()
 if args.cuda:
     model.cuda()
 if args.distributed:
-    #model=DistributedDataParallel(model)
-    model=torch.nn.parallel.DistributedDataParallel(model)
+    model=torch.nn.parallel.DistributedDataParallelCPU(model)
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
@@ -131,7 +130,8 @@ def test():
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
-
+start_time=time.time()
 for epoch in range(1, args.epochs + 1):
     train(epoch)
     test()
+print("total time = %.4f s" %(time.time() - start_time))

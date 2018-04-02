@@ -4,14 +4,14 @@
 #export I_MPI_FABRICS=tmi                                                        
                                                                                 
 export KMP_AFFINITY=compact,1,0,granularity=fine                                
-export OMP_NUM_THREADS=56
+export OMP_NUM_THREADS=10
 which python
 
 #get node number:
 echo "runing with $1 node"
 
 if [ $1 == 1 ]; then 
-    python main.py
+    python main.py --batch-size 64 --world-size 1
 fi
 if [ $1 == 2 ]; then 
     mpirun -n 2  python -u main.py --batch-size 32 --world-size 2
